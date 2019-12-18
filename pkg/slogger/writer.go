@@ -3,7 +3,6 @@ package slogger
 import (
 	"os"
 
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -68,7 +67,16 @@ func newZapCore() zapcore.Core {
 
 	consoleDebugging := zapcore.Lock(os.Stdout)
 	consoleErrors := zapcore.Lock(os.Stderr)
-	sentryErrors := zapcore.Lock(SentryZap)
+
+	sentryZap = SentryZap{
+		Options: cfg.Sentry,
+	}
+	sentryErrors := zapcore.Lock(sentryZap)
+
+	logglyZap = LogglyZap{
+		Options: cfg.Loggly,
+	}
+	logglyLogging := zapcore.Lock(logglyZap)
 
 	consoleEncoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
 	jsonConfig := zap.NewProductionEncoderConfig()
@@ -78,7 +86,7 @@ func newZapCore() zapcore.Core {
 	jsonEncoder := zapcore.NewJSONEncoder(jsonConfig)
 
 	sentryHighPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
-		return viper.GetBool("logger.sentry.enabled") && lvl >= zapcore.ErrorLevel
+		return cfg.Sentry.Enabled && lvl >= zapcore.ErrorLevel
 	})
 	highPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
 		return lvl >= zapcore.ErrorLevel
@@ -87,7 +95,7 @@ func newZapCore() zapcore.Core {
 		return lvl == zapcore.InfoLevel || lvl == zapcore.WarnLevel
 	})
 	debugPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
-		return viper.GetString("log.default_level") == "debug" && lvl == zapcore.DebugLevel
+		return cfg.Level == "debug" && lvl == zapcore.DebugLevel
 	})
 
 	core := zapcore.NewTee(
@@ -95,6 +103,7 @@ func newZapCore() zapcore.Core {
 		zapcore.NewCore(consoleEncoder, consoleDebugging, lowPriority),
 		zapcore.NewCore(consoleEncoder, consoleErrors, highPriority),
 		zapcore.NewCore(jsonEncoder, sentryErrors, sentryHighPriority),
+		zapcore.NewCore(jsonEncoder, logglyLogging, lowPriority),
 	)
 
 	globalZapCore = &core

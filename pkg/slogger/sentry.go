@@ -5,16 +5,20 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/spf13/viper"
 	"go.uber.org/zap/zapcore"
 )
 
-type sentryZapStruct struct {
-	Message string
+type SentryZapOptions struct {
+	Enabled bool
+	Dsn     string
 }
 
-// SentryZap is the exported variable for the struct.
-var SentryZap sentryZapStruct
+type SentryZap struct {
+	Message string
+	Options SentryZapOptions
+}
+
+var sentryZap SentryZap
 
 /*
 EpochTimeEncoderInt64 is a time encoder for Zap that encodes time to int64 instead of float64.
@@ -28,21 +32,21 @@ func EpochTimeEncoderInt64(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
 /*
 Sync sends the message that resides in SentryZap.Message to Senty if it's not empty.
 */
-func (s sentryZapStruct) Sync() error {
-	hub := sentry.CurrentHub()
-	if hub == nil || hub.Client() == nil || hub.Client().Options().Dsn != viper.GetString("logger.sentry.dsn") {
-		if err := sentry.Init(sentry.ClientOptions{
-			Dsn: viper.GetString("logger.sentry.dsn"),
-		}); err != nil {
-			return err
+func (s SentryZap) Sync() error {
+	if sentryZap.Message != "" {
+		hub := sentry.CurrentHub()
+		if hub == nil || hub.Client() == nil || hub.Client().Options().Dsn != sentryZap.Options.Dsn {
+			if err := sentry.Init(sentry.ClientOptions{
+				Dsn: sentryZap.Options.Dsn,
+			}); err != nil {
+				return err
+			}
 		}
-	}
 
-	if SentryZap.Message != "" {
 		defer sentry.Flush(0)
 
 		event := sentry.NewEvent()
-		if err := json.Unmarshal([]byte(SentryZap.Message), &event); err != nil {
+		if err := json.Unmarshal([]byte(sentryZap.Message), &event); err != nil {
 			panic(err)
 		}
 
@@ -55,7 +59,7 @@ func (s sentryZapStruct) Sync() error {
 /*
 Write writes the given bytes to SentryZap.Message as a string.
 */
-func (s sentryZapStruct) Write(data []byte) (n int, err error) {
-	SentryZap.Message = string(data)
+func (s SentryZap) Write(data []byte) (n int, err error) {
+	sentryZap.Message = string(data)
 	return 0, nil
 }
